@@ -22,6 +22,21 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
+    .welcome-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .step-card {
+        background-color: #f8f9fa;
+        padding: 2rem;
+        border-radius: 10px;
+        border-left: 5px solid #1f77b4;
+        margin: 1rem 0;
+    }
     .positive { color: #2ecc71; }
     .negative { color: #e74c3c; }
     .neutral { color: #f39c12; }
@@ -31,6 +46,13 @@ st.markdown("""
         border-radius: 10px;
         border-left: 5px solid #e74c3c;
         margin: 0.5rem 0;
+    }
+    .upload-section {
+        background-color: #e8f4fd;
+        padding: 2rem;
+        border-radius: 10px;
+        border: 2px dashed #1f77b4;
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -360,33 +382,175 @@ class SentimentDashboard:
         
         return actions
 
-def main():
-    st.markdown('<h1 class="main-header">📊 Stakeholder Sentiment Analysis Dashboard</h1>', 
-                unsafe_allow_html=True)
+def show_introduction():
+    """Show the introduction page"""
+    st.markdown('<div class="welcome-card">', unsafe_allow_html=True)
+    st.markdown('<h1>🎯 Stakeholder Sentiment Analysis Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<h3>Transform Feedback into Actionable Insights</h3>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    st.info("🚀 **No external dependencies required** - Running on pure Streamlit power!")
+    st.markdown("""
+    ## 📋 Welcome to Your Stakeholder Intelligence Hub!
     
-    # Initialize dashboard
+    This dashboard helps you **monitor, analyze, and act** on stakeholder feedback across your organization.
+    """)
+    
+    # Key Features
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="step-card">
+        <h4>🔍 Smart Analysis</h4>
+        <p>Automated sentiment analysis using advanced NLP techniques</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="step-card">
+        <h4>📊 Visual Insights</h4>
+        <p>Interactive charts and metrics for easy understanding</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="step-card">
+        <h4>🎯 Action Plans</h4>
+        <p>Automated recommendations based on sentiment patterns</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # How it works
+    st.markdown("""
+    ## 🚀 How It Works
+    
+    1. **Upload Data** - Provide your stakeholder feedback data
+    2. **Automatic Analysis** - Our system analyzes sentiment and patterns
+    3. **Get Insights** - View comprehensive dashboards and reports
+    4. **Take Action** - Follow automated action plans
+    """)
+    
+    # Start Analysis Button
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        if st.button("🚀 Start Sentiment Analysis", use_container_width=True, type="primary"):
+            st.session_state.current_step = "upload_data"
+            st.rerun()
+
+def show_upload_section():
+    """Show data upload section"""
+    st.markdown('<h2>📁 Step 1: Upload Your Data</h2>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="upload-section">
+    <h3>📊 Upload Stakeholder Feedback Data</h3>
+    <p>Upload a CSV file containing your stakeholder feedback data</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # File upload
+    uploaded_file = st.file_uploader(
+        "Choose a CSV file", 
+        type=['csv'],
+        help="Upload a CSV file with columns: date, stakeholder_group, feedback_text"
+    )
+    
+    # CSV format requirements
+    with st.expander("📋 Required CSV Format"):
+        st.markdown("""
+        Your CSV file should include these columns:
+        
+        - **date**: Feedback date (YYYY-MM-DD)
+        - **stakeholder_group**: Customer, Employee, Investor, Partner, etc.
+        - **feedback_text**: The actual feedback comments
+        - **source** (optional): Survey, Support, Social Media, etc.
+        - **priority** (optional): High, Medium, Low
+        
+        ### Example CSV:
+        ```csv
+        date,stakeholder_group,feedback_text,source,priority
+        2024-01-15,Customer,"Great service and quick response",Survey,High
+        2024-01-16,Employee,"Need better tools for remote work",Internal,Medium
+        2024-01-17,Investor,"Satisfied with quarterly results",Meeting,High
+        ```
+        """)
+    
+    # Sample data option
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        use_sample = st.checkbox("Use sample data for demonstration", value=True)
+    
+    with col2:
+        if st.button("📊 Use Sample Data", use_container_width=True):
+            st.session_state.use_sample_data = True
+            st.session_state.current_step = "analysis"
+            st.rerun()
+    
+    # Process uploaded file
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success(f"✅ Successfully uploaded {len(df)} records!")
+            
+            # Show preview
+            st.subheader("📋 Data Preview")
+            st.dataframe(df.head())
+            
+            # Validate required columns
+            required_columns = ['date', 'stakeholder_group', 'feedback_text']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            
+            if missing_columns:
+                st.error(f"❌ Missing required columns: {', '.join(missing_columns)}")
+            else:
+                st.session_state.uploaded_data = df
+                if st.button("🔍 Analyze This Data", use_container_width=True, type="primary"):
+                    st.session_state.current_step = "analysis"
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"❌ Error reading file: {e}")
+    
+    # Back button
+    if st.button("⬅️ Back to Introduction"):
+        st.session_state.current_step = "introduction"
+        st.rerun()
+
+def show_analysis_dashboard():
+    """Show the main analysis dashboard"""
     dashboard = SentimentDashboard()
     
-    # Sidebar
+    # Load data
+    if st.session_state.get('use_sample_data'):
+        df = dashboard.load_sample_data()
+        st.info("📊 Using sample demonstration data")
+    else:
+        df = st.session_state.get('uploaded_data')
+        if df is None:
+            st.error("No data available. Please go back and upload data.")
+            if st.button("⬅️ Back to Data Upload"):
+                st.session_state.current_step = "upload_data"
+                st.rerun()
+            return
+    
+    # Analyze data if not already analyzed
+    if 'sentiment_score' not in df.columns:
+        df = dashboard.analyzer.analyze_dataframe(df)
+    
+    # Sidebar filters
     with st.sidebar:
-        st.header("Data Configuration")
+        st.header("🔧 Analysis Controls")
         
-        uploaded_file = st.file_uploader("Upload CSV File", type=['csv'])
+        if st.button("🔄 Start New Analysis"):
+            st.session_state.current_step = "upload_data"
+            st.rerun()
         
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                if 'sentiment_score' not in df.columns and 'feedback_text' in df.columns:
-                    df = dashboard.analyzer.analyze_dataframe(df)
-                st.success("✅ File uploaded successfully!")
-            except Exception as e:
-                st.error(f"Error: {e}")
-                df = dashboard.load_sample_data()
-        else:
-            df = dashboard.load_sample_data()
-        
+        st.markdown("---")
         st.header("Filters")
         
         if 'date' in df.columns:
@@ -409,6 +573,9 @@ def main():
     
     if stakeholder_groups:
         df = df[df['stakeholder_group'].isin(stakeholder_groups)]
+    
+    # Main Dashboard
+    st.markdown('<h2>📊 Sentiment Analysis Dashboard</h2>', unsafe_allow_html=True)
     
     # Calculate metrics
     metrics = dashboard.calculate_metrics(df)
@@ -488,11 +655,36 @@ def main():
         
         csv = df.to_csv(index=False)
         st.download_button(
-            label="Download Data",
+            label="Download Analyzed Data",
             data=csv,
-            file_name="sentiment_analysis.csv",
+            file_name="sentiment_analysis_results.csv",
             mime="text/csv"
         )
+    
+    # New Analysis Button
+    st.markdown("---")
+    if st.button("🔄 Start New Analysis", use_container_width=True):
+        st.session_state.current_step = "upload_data"
+        st.rerun()
+
+def main():
+    # Initialize session state
+    if 'current_step' not in st.session_state:
+        st.session_state.current_step = "introduction"
+    
+    if 'uploaded_data' not in st.session_state:
+        st.session_state.uploaded_data = None
+    
+    if 'use_sample_data' not in st.session_state:
+        st.session_state.use_sample_data = False
+    
+    # Show appropriate section based on current step
+    if st.session_state.current_step == "introduction":
+        show_introduction()
+    elif st.session_state.current_step == "upload_data":
+        show_upload_section()
+    elif st.session_state.current_step == "analysis":
+        show_analysis_dashboard()
 
 if __name__ == "__main__":
     main()
