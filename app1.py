@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import re
 from collections import Counter
+
+# TextBlob imports
 from textblob import TextBlob
 
 # Page configuration
@@ -52,25 +54,42 @@ class SentimentAnalyzer:
         }
     
     def analyze_text(self, text):
-        """Analyze sentiment of a single text"""
+        """Analyze sentiment using TextBlob"""
         if pd.isna(text) or text == '':
             return 0.0, 'neutral'
         
-        analysis = TextBlob(str(text))
-        polarity = analysis.sentiment.polarity
-        
-        if polarity > self.sentiment_thresholds['positive']:
-            sentiment = 'positive'
-        elif polarity < self.sentiment_thresholds['negative']:
-            sentiment = 'negative'
-        else:
-            sentiment = 'neutral'
-        
-        return polarity, sentiment
+        try:
+            analysis = TextBlob(str(text))
+            polarity = analysis.sentiment.polarity
+            
+            if polarity > self.sentiment_thresholds['positive']:
+                sentiment = 'positive'
+            elif polarity < self.sentiment_thresholds['negative']:
+                sentiment = 'negative'
+            else:
+                sentiment = 'neutral'
+            
+            return polarity, sentiment
+        except Exception as e:
+            # Fallback in case TextBlob fails
+            st.warning(f"TextBlob analysis failed: {e}")
+            return 0.0, 'neutral'
     
     def analyze_dataframe(self, df, text_column='feedback_text'):
         """Analyze sentiment for entire dataframe"""
-        results = df[text_column].apply(self.analyze_text)
+        st.info("🔍 Analyzing sentiment with TextBlob...")
+        
+        # Show progress
+        progress_bar = st.progress(0)
+        results = []
+        
+        for i, text in enumerate(df[text_column]):
+            results.append(self.analyze_text(text))
+            if i % 20 == 0:  # Update progress every 20 rows
+                progress_bar.progress((i + 1) / len(df))
+        
+        progress_bar.empty()
+        
         df['sentiment_score'] = [r[0] for r in results]
         df['sentiment_category'] = [r[1] for r in results]
         return df
@@ -100,7 +119,9 @@ class SentimentDashboard:
                     "Outstanding features and user-friendly interface",
                     "Prompt response and helpful solutions",
                     "Excellent customer experience overall",
-                    "Highly recommend this product to others"
+                    "Highly recommend this product to others",
+                    "Amazing service and quick resolution times",
+                    "Professional team with great expertise"
                 ]
             elif sentiment_score < -0.3:
                 feedbacks = [
@@ -109,7 +130,9 @@ class SentimentDashboard:
                     "Frustrated with the billing process",
                     "Disappointed with product reliability",
                     "Slow response time from support",
-                    "Difficult to use interface"
+                    "Difficult to use interface",
+                    "Unreliable service with frequent downtime",
+                    "Poor quality and bad customer support"
                 ]
             else:
                 feedbacks = [
@@ -118,7 +141,9 @@ class SentimentDashboard:
                     "Satisfactory performance overall",
                     "Adequate for our current needs",
                     "Standard features work as expected",
-                    "Reasonable pricing for what you get"
+                    "Reasonable pricing for what you get",
+                    "Acceptable but needs improvement",
+                    "Moderate experience with some issues"
                 ]
             
             data.append({
@@ -262,26 +287,35 @@ class SentimentDashboard:
             if avg_sentiment < -0.2 or (negative_count / total_feedback > 0.3 and total_feedback > 5):
                 priority = "HIGH" if avg_sentiment < -0.4 else "MEDIUM"
                 
-                # Get top negative themes
-                negative_feedback = ' '.join(group_data[group_data['sentiment_score'] < -0.1]['feedback_text'])
-                negative_words = re.findall(r'\b[a-zA-Z]{4,}\b', negative_feedback.lower())
-                stop_words = {'this', 'that', 'with', 'have', 'been', 'they', 'what', 'your'}
-                filtered_words = [word for word in negative_words if word not in stop_words]
-                common_issues = Counter(filtered_words).most_common(3)
+                # Get top negative themes using TextBlob for more insight
+                negative_feedback = group_data[group_data['sentiment_score'] < -0.1]['feedback_text']
+                common_issues = []
                 
-                issues = [f"{word} ({count})" for word, count in common_issues]
+                for feedback in negative_feedback.head(5):  # Analyze top 5 negative feedbacks
+                    try:
+                        blob = TextBlob(str(feedback))
+                        # Extract noun phrases as potential issues
+                        noun_phrases = blob.noun_phrases
+                        common_issues.extend(noun_phrases)
+                    except:
+                        pass
+                
+                # Count most common issues
+                issue_counts = Counter(common_issues).most_common(3)
+                issues_display = ', '.join([f"{issue} ({count})" for issue, count in issue_counts]) if issue_counts else 'General dissatisfaction'
                 
                 actions.append({
                     'stakeholder_group': group,
                     'priority': priority,
                     'avg_sentiment': avg_sentiment,
                     'negative_feedback_count': negative_count,
-                    'common_issues': ', '.join(issues) if issues else 'General dissatisfaction',
+                    'common_issues': issues_display,
                     'recommended_actions': [
                         f"Schedule meeting with {group} representatives",
-                        f"Conduct root cause analysis for identified issues",
+                        f"Conduct root cause analysis for: {issues_display}",
                         f"Develop improvement action plan with timeline",
-                        f"Assign dedicated relationship manager"
+                        f"Assign dedicated relationship manager",
+                        f"Monitor sentiment weekly for improvements"
                     ],
                     'timeline': "1-2 weeks" if priority == "HIGH" else "2-4 weeks"
                 })
@@ -289,7 +323,7 @@ class SentimentDashboard:
         return pd.DataFrame(actions)
 
 def main():
-    st.markdown('<h1 class="main-header">📊 Stakeholder Sentiment Analysis Dashboard</h1>', 
+    st.markdown('<h1 class="main-header">📊 Stakeholder Sentiment Dashboard</h1>', 
                 unsafe_allow_html=True)
     
     # Initialize dashboard
@@ -308,7 +342,7 @@ def main():
                 # Analyze sentiment if not already present
                 if 'sentiment_score' not in df.columns and 'feedback_text' in df.columns:
                     df = dashboard.analyzer.analyze_dataframe(df)
-                st.success("File uploaded and analyzed successfully!")
+                st.success("✅ File uploaded and analyzed with TextBlob!")
             except Exception as e:
                 st.error(f"Error reading file: {e}")
                 st.info("Using sample data instead")
@@ -362,7 +396,7 @@ def main():
     metrics = dashboard.calculate_metrics(df)
     
     # Key Metrics Row
-    st.subheader("📈 Key Metrics")
+    st.subheader("📈 Key Metrics (Powered by TextBlob NLP)")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -457,7 +491,7 @@ def main():
             st.info("No negative feedback available")
     
     # Action Plan
-    st.subheader("📋 Automated Action Plan")
+    st.subheader("📋 Automated Action Plan (TextBlob Enhanced)")
     
     action_plan = dashboard.generate_action_plan(df)
     
@@ -500,7 +534,7 @@ def main():
     # Raw Data Explorer
     st.subheader("📊 Data Explorer")
     
-    with st.expander("View Raw Data"):
+    with st.expander("View Raw Data with TextBlob Analysis"):
         st.dataframe(df)
         
         # Download processed data
