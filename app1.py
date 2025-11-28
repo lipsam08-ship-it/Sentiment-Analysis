@@ -1,14 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import re
 from collections import Counter
-
-# TextBlob imports
-from textblob import TextBlob
 
 # Page configuration
 st.set_page_config(
@@ -27,12 +22,6 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 0.5rem 0;
-    }
     .positive { color: #2ecc71; }
     .negative { color: #e74c3c; }
     .neutral { color: #f39c12; }
@@ -48,48 +37,84 @@ st.markdown("""
 
 class SentimentAnalyzer:
     def __init__(self):
-        self.sentiment_thresholds = {
-            'positive': 0.1,
-            'negative': -0.1
+        # Enhanced sentiment word database
+        self.positive_words = {
+            'excellent', 'outstanding', 'amazing', 'great', 'good', 'awesome', 'fantastic',
+            'wonderful', 'perfect', 'brilliant', 'superb', 'exceptional', 'satisfied',
+            'happy', 'pleased', 'delighted', 'impressed', 'recommend', 'love', 'like',
+            'helpful', 'responsive', 'quick', 'fast', 'easy', 'smooth', 'reliable',
+            'professional', 'friendly', 'supportive', 'valuable', 'effective', 'efficient',
+            'outstanding', 'remarkable', 'terrific', 'fantastic', 'awesome', 'perfect'
         }
+        
+        self.negative_words = {
+            'poor', 'bad', 'terrible', 'awful', 'horrible', 'disappointing', 'frustrating',
+            'annoying', 'angry', 'upset', 'displeased', 'unsatisfied', 'slow', 'delayed',
+            'difficult', 'complicated', 'confusing', 'broken', 'failed', 'error', 'issue',
+            'problem', 'bug', 'crash', 'unreliable', 'unprofessional', 'rude', 'ignored',
+            'expensive', 'overpriced', 'waste', 'useless', 'worthless', 'hate', 'dislike'
+        }
+        
+        self.strong_positive = {'excellent', 'outstanding', 'amazing', 'perfect', 'brilliant', 'fantastic'}
+        self.strong_negative = {'terrible', 'awful', 'horrible', 'useless', 'worthless', 'hate'}
     
     def analyze_text(self, text):
-        """Analyze sentiment using TextBlob"""
+        """Advanced rule-based sentiment analysis"""
         if pd.isna(text) or text == '':
             return 0.0, 'neutral'
         
-        try:
-            analysis = TextBlob(str(text))
-            polarity = analysis.sentiment.polarity
+        text_lower = str(text).lower()
+        
+        # Check for negation patterns
+        negations = {'not', 'no', 'never', 'none', 'nothing', 'without'}
+        words = text_lower.split()
+        
+        positive_score = 0
+        negative_score = 0
+        negation_active = False
+        
+        for i, word in enumerate(words):
+            word_clean = re.sub(r'[^a-zA-Z]', '', word)
             
-            if polarity > self.sentiment_thresholds['positive']:
-                sentiment = 'positive'
-            elif polarity < self.sentiment_thresholds['negative']:
-                sentiment = 'negative'
-            else:
-                sentiment = 'neutral'
-            
-            return polarity, sentiment
-        except Exception as e:
-            # Fallback in case TextBlob fails
-            st.warning(f"TextBlob analysis failed: {e}")
+            if word_clean in negations:
+                negation_active = True
+                continue
+                
+            if word_clean in self.strong_positive:
+                score = 2 if not negation_active else -2
+                positive_score += score
+            elif word_clean in self.positive_words:
+                score = 1 if not negation_active else -1
+                positive_score += score
+            elif word_clean in self.strong_negative:
+                score = -2 if not negation_active else 2
+                negative_score += score
+            elif word_clean in self.negative_words:
+                score = -1 if not negation_active else 1
+                negative_score += score
+                
+            # Reset negation after one word
+            if negation_active and word_clean:
+                negation_active = False
+        
+        # Calculate final sentiment
+        total_impact = positive_score + abs(negative_score)
+        if total_impact == 0:
             return 0.0, 'neutral'
+        
+        sentiment_score = (positive_score + negative_score) / 10.0  # Normalize to -1 to 1
+        
+        # Categorize sentiment
+        if sentiment_score > 0.1:
+            return min(sentiment_score, 1.0), 'positive'
+        elif sentiment_score < -0.1:
+            return max(sentiment_score, -1.0), 'negative'
+        else:
+            return sentiment_score, 'neutral'
     
     def analyze_dataframe(self, df, text_column='feedback_text'):
         """Analyze sentiment for entire dataframe"""
-        st.info("🔍 Analyzing sentiment with TextBlob...")
-        
-        # Show progress
-        progress_bar = st.progress(0)
-        results = []
-        
-        for i, text in enumerate(df[text_column]):
-            results.append(self.analyze_text(text))
-            if i % 20 == 0:  # Update progress every 20 rows
-                progress_bar.progress((i + 1) / len(df))
-        
-        progress_bar.empty()
-        
+        results = df[text_column].apply(self.analyze_text)
         df['sentiment_score'] = [r[0] for r in results]
         df['sentiment_category'] = [r[1] for r in results]
         return df
@@ -99,7 +124,7 @@ class SentimentDashboard:
         self.analyzer = SentimentAnalyzer()
         
     def load_sample_data(self):
-        """Generate sample data for demonstration"""
+        """Generate comprehensive sample data"""
         np.random.seed(42)
         
         stakeholders = ['Customers', 'Employees', 'Investors', 'Partners', 'Regulators']
@@ -111,39 +136,38 @@ class SentimentDashboard:
             source = np.random.choice(sources)
             sentiment_score = np.random.normal(0.2, 0.5)
             
-            # Generate realistic feedback based on sentiment
             if sentiment_score > 0.3:
                 feedbacks = [
-                    "Great product and excellent support team!",
-                    "Very satisfied with the service quality",
-                    "Outstanding features and user-friendly interface",
-                    "Prompt response and helpful solutions",
-                    "Excellent customer experience overall",
-                    "Highly recommend this product to others",
-                    "Amazing service and quick resolution times",
-                    "Professional team with great expertise"
+                    "Excellent service and very responsive support team!",
+                    "Great product with outstanding features that work perfectly",
+                    "Very satisfied with the quick resolution and professional help",
+                    "Amazing customer experience overall, highly recommended",
+                    "Outstanding performance and reliable service delivery",
+                    "Fantastic support team that solved my issues quickly",
+                    "Perfect solution for our business needs and requirements",
+                    "Brilliant features and excellent customer service"
                 ]
             elif sentiment_score < -0.3:
                 feedbacks = [
-                    "Poor customer service experience",
-                    "Facing issues with the latest update",
-                    "Frustrated with the billing process",
-                    "Disappointed with product reliability",
-                    "Slow response time from support",
-                    "Difficult to use interface",
-                    "Unreliable service with frequent downtime",
-                    "Poor quality and bad customer support"
+                    "Poor customer service experience and slow response",
+                    "Terrible issues with the latest update that broke everything",
+                    "Very frustrating billing process with hidden charges",
+                    "Disappointed with product reliability and frequent crashes",
+                    "Awful support experience with unhelpful staff",
+                    "Horrible user interface that is difficult to navigate",
+                    "Useless features that don't work as advertised",
+                    "Waste of money and time with this terrible service"
                 ]
             else:
                 feedbacks = [
-                    "Average experience, could be better",
-                    "The product meets basic requirements",
-                    "Satisfactory performance overall",
-                    "Adequate for our current needs",
-                    "Standard features work as expected",
-                    "Reasonable pricing for what you get",
-                    "Acceptable but needs improvement",
-                    "Moderate experience with some issues"
+                    "Average experience, could be better but works okay",
+                    "The product meets basic requirements for our needs",
+                    "Satisfactory performance overall with some limitations",
+                    "Adequate solution for current business requirements",
+                    "Standard features work as expected most of the time",
+                    "Reasonable pricing for what you get from the service",
+                    "Acceptable quality but needs improvement in some areas",
+                    "Moderate experience with both good and bad aspects"
                 ]
             
             data.append({
@@ -155,7 +179,8 @@ class SentimentDashboard:
                 'sentiment_score': max(-1, min(1, sentiment_score))
             })
         
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        return self.analyzer.analyze_dataframe(df)
     
     def calculate_metrics(self, df):
         """Calculate key sentiment metrics"""
@@ -173,111 +198,133 @@ class SentimentDashboard:
         }
     
     def create_sentiment_gauge(self, score):
-        """Create a sentiment gauge chart"""
-        fig = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = score,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Overall Sentiment Score"},
-            delta = {'reference': 0},
-            gauge = {
-                'axis': {'range': [-1, 1]},
-                'bar': {'color': "darkblue"},
-                'steps': [
-                    {'range': [-1, -0.3], 'color': "lightcoral"},
-                    {'range': [-0.3, 0.3], 'color': "lightyellow"},
-                    {'range': [0.3, 1], 'color': "lightgreen"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': score
-                }
-            }
-        ))
-        fig.update_layout(height=300)
-        return fig
+        """Create sentiment gauge using native Streamlit"""
+        st.write(f"**Overall Sentiment Score: {score:.2f}**")
+        
+        # Create a visual gauge using progress bar
+        normalized_score = (score + 1) / 2  # Convert -1 to 1 range to 0 to 1
+        
+        if score > 0.3:
+            color = "green"
+        elif score < -0.3:
+            color = "red"
+        else:
+            color = "orange"
+            
+        st.progress(normalized_score, text=f"Sentiment Level")
+        
+        # Interpretation
+        if score > 0.3:
+            st.success("✅ Positive sentiment - Strong stakeholder satisfaction")
+        elif score > 0.1:
+            st.info("ℹ️  Moderately positive - Good stakeholder relations")
+        elif score > -0.1:
+            st.warning("⚠️  Neutral - Room for improvement")
+        elif score > -0.3:
+            st.error("❌ Moderately negative - Attention required")
+        else:
+            st.error("🚨 Critical - Immediate action needed")
     
     def create_sentiment_distribution(self, metrics):
-        """Create sentiment distribution pie chart"""
-        labels = ['Positive', 'Neutral', 'Negative']
-        values = [metrics['positive_pct'], metrics['neutral_pct'], metrics['negative_pct']]
-        colors = ['#2ecc71', '#f39c12', '#e74c3c']
+        """Create sentiment distribution chart"""
+        col1, col2, col3 = st.columns(3)
         
-        fig = px.pie(
-            values=values, 
-            names=labels, 
-            color=labels,
-            color_discrete_map=dict(zip(labels, colors)),
-            title="Sentiment Distribution"
-        )
-        return fig
+        with col1:
+            st.metric(
+                "Positive Feedback",
+                f"{metrics['positive_pct']:.1f}%",
+                delta=f"{metrics['positive_pct'] - 33:.1f}%"
+            )
+        
+        with col2:
+            st.metric(
+                "Neutral Feedback", 
+                f"{metrics['neutral_pct']:.1f}%",
+                delta=f"{metrics['neutral_pct'] - 33:.1f}%"
+            )
+        
+        with col3:
+            st.metric(
+                "Negative Feedback",
+                f"{metrics['negative_pct']:.1f}%",
+                delta=f"{metrics['negative_pct'] - 33:.1f}%",
+                delta_color="inverse"
+            )
+        
+        # Simple bar chart using st.bar_chart
+        dist_data = pd.DataFrame({
+            'Sentiment': ['Positive', 'Neutral', 'Negative'],
+            'Percentage': [metrics['positive_pct'], metrics['neutral_pct'], metrics['negative_pct']]
+        })
+        
+        st.bar_chart(dist_data.set_index('Sentiment'))
     
     def create_trend_chart(self, df):
         """Create sentiment trend over time"""
         df['date'] = pd.to_datetime(df['date'])
         daily_avg = df.groupby(df['date'].dt.date)['sentiment_score'].mean().reset_index()
         
-        fig = px.line(
-            daily_avg, 
-            x='date', 
-            y='sentiment_score',
-            title="Sentiment Trend Over Time",
-            labels={'sentiment_score': 'Average Sentiment', 'date': 'Date'}
-        )
-        fig.add_hline(y=0, line_dash="dash", line_color="red")
-        return fig
+        st.write("**Sentiment Trend Over Time**")
+        st.line_chart(daily_avg.set_index('date'))
     
-    def create_top_words_chart(self, df, sentiment_type='positive', top_n=10):
-        """Create bar chart of top words"""
+    def create_stakeholder_analysis(self, df):
+        """Create stakeholder group analysis"""
+        group_sentiment = df.groupby('stakeholder_group')['sentiment_score'].agg(['mean', 'count']).reset_index()
+        
+        st.write("**Average Sentiment by Stakeholder Group**")
+        
+        for _, row in group_sentiment.iterrows():
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                score = row['mean']
+                if score > 0.3:
+                    color = "🟢"
+                elif score > 0.1:
+                    color = "🟡"
+                elif score > -0.1:
+                    color = "🟠"
+                elif score > -0.3:
+                    color = "🔴"
+                else:
+                    color = "💀"
+                    
+                st.write(f"{color} **{row['stakeholder_group']}**: {score:.2f}")
+            
+            with col2:
+                st.write(f"({row['count']} feedback)")
+    
+    def create_top_words_chart(self, df, sentiment_type='positive', top_n=8):
+        """Create top words analysis"""
         if sentiment_type == 'positive':
             text_data = ' '.join(df[df['sentiment_score'] > 0.1]['feedback_text'])
-            color = '#2ecc71'
-            title = f"Top Words in Positive Feedback"
+            title = "🔹 Top Positive Words"
         elif sentiment_type == 'negative':
             text_data = ' '.join(df[df['sentiment_score'] < -0.1]['feedback_text'])
-            color = '#e74c3c'
-            title = f"Top Words in Negative Feedback"
+            title = "🔸 Top Negative Words"
         else:
             text_data = ' '.join(df[(df['sentiment_score'] >= -0.1) & (df['sentiment_score'] <= 0.1)]['feedback_text'])
-            color = '#f39c12'
-            title = f"Top Words in Neutral Feedback"
+            title = "🔸 Top Neutral Words"
         
         if not text_data.strip():
-            return None
+            st.write(f"{title}")
+            st.write("No data available")
+            return
         
-        # Extract words and count frequencies
         words = re.findall(r'\b[a-zA-Z]{3,}\b', text_data.lower())
         stop_words = {'the', 'and', 'for', 'with', 'this', 'that', 'have', 'has', 'was', 
-                     'were', 'are', 'is', 'you', 'your', 'our', 'they', 'their', 'been',
-                     'from', 'have', 'that', 'this', 'with', 'they', 'what', 'your',
-                     'when', 'which', 'were', 'been', 'will', 'would', 'should',
-                     'could', 'about', 'into', 'through', 'during', 'before'}
+                     'were', 'are', 'is', 'you', 'your', 'our', 'they', 'their', 'been'}
         filtered_words = [word for word in words if word not in stop_words]
         
         word_freq = Counter(filtered_words).most_common(top_n)
         
-        if not word_freq:
-            return None
-            
-        words_df = pd.DataFrame(word_freq, columns=['word', 'frequency'])
-        
-        fig = px.bar(
-            words_df,
-            x='frequency',
-            y='word',
-            orientation='h',
-            title=title,
-            color_discrete_sequence=[color]
-        )
-        fig.update_layout(showlegend=False, height=300)
-        return fig
+        st.write(f"**{title}**")
+        for word, freq in word_freq:
+            st.write(f"• {word} ({freq})")
 
     def generate_action_plan(self, df):
         """Generate automated action plans based on sentiment analysis"""
         actions = []
         
-        # Analyze by stakeholder group
         for group in df['stakeholder_group'].unique():
             group_data = df[df['stakeholder_group'] == group]
             avg_sentiment = group_data['sentiment_score'].mean()
@@ -287,100 +334,74 @@ class SentimentDashboard:
             if avg_sentiment < -0.2 or (negative_count / total_feedback > 0.3 and total_feedback > 5):
                 priority = "HIGH" if avg_sentiment < -0.4 else "MEDIUM"
                 
-                # Get top negative themes using TextBlob for more insight
-                negative_feedback = group_data[group_data['sentiment_score'] < -0.1]['feedback_text']
-                common_issues = []
+                # Get top negative themes
+                negative_feedback = ' '.join(group_data[group_data['sentiment_score'] < -0.1]['feedback_text'])
+                negative_words = re.findall(r'\b[a-zA-Z]{4,}\b', negative_feedback.lower())
+                stop_words = {'this', 'that', 'with', 'have', 'been', 'they', 'what', 'your'}
+                filtered_words = [word for word in negative_words if word not in stop_words]
+                common_issues = Counter(filtered_words).most_common(3)
                 
-                for feedback in negative_feedback.head(5):  # Analyze top 5 negative feedbacks
-                    try:
-                        blob = TextBlob(str(feedback))
-                        # Extract noun phrases as potential issues
-                        noun_phrases = blob.noun_phrases
-                        common_issues.extend(noun_phrases)
-                    except:
-                        pass
-                
-                # Count most common issues
-                issue_counts = Counter(common_issues).most_common(3)
-                issues_display = ', '.join([f"{issue} ({count})" for issue, count in issue_counts]) if issue_counts else 'General dissatisfaction'
+                issues = [f"{word} ({count})" for word, count in common_issues]
                 
                 actions.append({
                     'stakeholder_group': group,
                     'priority': priority,
                     'avg_sentiment': avg_sentiment,
                     'negative_feedback_count': negative_count,
-                    'common_issues': issues_display,
+                    'common_issues': ', '.join(issues) if issues else 'General dissatisfaction',
                     'recommended_actions': [
                         f"Schedule meeting with {group} representatives",
-                        f"Conduct root cause analysis for: {issues_display}",
+                        f"Conduct root cause analysis for identified issues",
                         f"Develop improvement action plan with timeline",
-                        f"Assign dedicated relationship manager",
-                        f"Monitor sentiment weekly for improvements"
+                        f"Assign dedicated relationship manager"
                     ],
                     'timeline': "1-2 weeks" if priority == "HIGH" else "2-4 weeks"
                 })
         
-        return pd.DataFrame(actions)
+        return actions
 
 def main():
-    st.markdown('<h1 class="main-header">📊 Stakeholder Sentiment Dashboard</h1>', 
+    st.markdown('<h1 class="main-header">📊 Stakeholder Sentiment Analysis Dashboard</h1>', 
                 unsafe_allow_html=True)
+    
+    st.info("🚀 **No external dependencies required** - Running on pure Streamlit power!")
     
     # Initialize dashboard
     dashboard = SentimentDashboard()
     
-    # Sidebar for filters and uploads
+    # Sidebar
     with st.sidebar:
         st.header("Data Configuration")
         
-        # File upload
         uploaded_file = st.file_uploader("Upload CSV File", type=['csv'])
         
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
-                # Analyze sentiment if not already present
                 if 'sentiment_score' not in df.columns and 'feedback_text' in df.columns:
                     df = dashboard.analyzer.analyze_dataframe(df)
-                st.success("✅ File uploaded and analyzed with TextBlob!")
+                st.success("✅ File uploaded successfully!")
             except Exception as e:
-                st.error(f"Error reading file: {e}")
-                st.info("Using sample data instead")
+                st.error(f"Error: {e}")
                 df = dashboard.load_sample_data()
         else:
-            st.info("Using sample data for demonstration")
             df = dashboard.load_sample_data()
         
         st.header("Filters")
         
-        # Date filter
         if 'date' in df.columns:
             df['date'] = pd.to_datetime(df['date'])
             min_date = df['date'].min().date()
             max_date = df['date'].max().date()
             
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
-            with col2:
-                end_date = st.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
+            start_date = st.date_input("Start Date", min_date)
+            end_date = st.date_input("End Date", max_date)
         
-        # Stakeholder group filter
         stakeholder_groups = st.multiselect(
             "Stakeholder Groups",
             options=df['stakeholder_group'].unique(),
             default=df['stakeholder_group'].unique()
         )
-        
-        # Source filter
-        if 'source' in df.columns:
-            sources = st.multiselect(
-                "Data Sources",
-                options=df['source'].unique(),
-                default=df['source'].unique()
-            )
-        else:
-            sources = []
     
     # Apply filters
     if 'date' in df.columns:
@@ -389,160 +410,87 @@ def main():
     if stakeholder_groups:
         df = df[df['stakeholder_group'].isin(stakeholder_groups)]
     
-    if sources and 'source' in df.columns:
-        df = df[df['source'].isin(sources)]
-    
     # Calculate metrics
     metrics = dashboard.calculate_metrics(df)
     
-    # Key Metrics Row
-    st.subheader("📈 Key Metrics (Powered by TextBlob NLP)")
+    # Key Metrics
+    st.subheader("📈 Key Metrics")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        sentiment_color = "normal"
-        if metrics['avg_sentiment'] > 0.3:
-            sentiment_color = "normal"
-        elif metrics['avg_sentiment'] < -0.3:
-            sentiment_color = "inverse"
-            
-        st.metric(
-            "Overall Sentiment Score",
-            f"{metrics['avg_sentiment']:.2f}",
-            delta=f"{metrics['avg_sentiment']:.2f} vs Neutral",
-            delta_color=sentiment_color
-        )
+        st.metric("Overall Sentiment", f"{metrics['avg_sentiment']:.2f}")
     
     with col2:
-        st.metric(
-            "Positive Feedback",
-            f"{metrics['positive_pct']:.1f}%",
-            delta=f"{metrics['positive_pct'] - 33:.1f}% vs expected"
-        )
+        st.metric("Positive", f"{metrics['positive_pct']:.1f}%")
     
     with col3:
-        st.metric(
-            "Negative Feedback",
-            f"{metrics['negative_pct']:.1f}%",
-            delta=f"{metrics['negative_pct'] - 33:.1f}% vs expected",
-            delta_color="inverse"
-        )
+        st.metric("Negative", f"{metrics['negative_pct']:.1f}%")
     
     with col4:
         st.metric("Total Feedback", metrics['total_feedback'])
     
-    # Main Charts Row
-    col1, col2 = st.columns(2)
+    # Sentiment Analysis
+    st.subheader("🎯 Sentiment Analysis")
+    dashboard.create_sentiment_gauge(metrics['avg_sentiment'])
     
-    with col1:
-        st.plotly_chart(dashboard.create_sentiment_gauge(metrics['avg_sentiment']), 
-                       use_container_width=True)
-    
-    with col2:
-        st.plotly_chart(dashboard.create_sentiment_distribution(metrics), 
-                       use_container_width=True)
+    # Distribution
+    st.subheader("📊 Sentiment Distribution")
+    dashboard.create_sentiment_distribution(metrics)
     
     # Trend Analysis
-    st.plotly_chart(dashboard.create_trend_chart(df), use_container_width=True)
+    st.subheader("📈 Trend Analysis")
+    dashboard.create_trend_chart(df)
     
-    # Stakeholder Group Analysis
-    st.subheader("👥 Stakeholder Group Analysis")
-    
-    group_sentiment = df.groupby('stakeholder_group')['sentiment_score'].agg(['mean', 'count']).reset_index()
-    group_sentiment = group_sentiment.rename(columns={'mean': 'avg_sentiment', 'count': 'feedback_count'})
-    
-    fig = px.bar(
-        group_sentiment,
-        x='stakeholder_group',
-        y='avg_sentiment',
-        color='avg_sentiment',
-        color_continuous_scale='RdYlGn',
-        title="Average Sentiment by Stakeholder Group",
-        text='avg_sentiment',
-        hover_data=['feedback_count']
-    )
-    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-    st.plotly_chart(fig, use_container_width=True)
+    # Stakeholder Analysis
+    st.subheader("👥 Stakeholder Analysis")
+    dashboard.create_stakeholder_analysis(df)
     
     # Top Words Analysis
     st.subheader("🔤 Top Words Analysis")
-    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        words_fig = dashboard.create_top_words_chart(df, 'positive')
-        if words_fig:
-            st.plotly_chart(words_fig, use_container_width=True)
-        else:
-            st.info("No positive feedback available")
+        dashboard.create_top_words_chart(df, 'positive')
     
     with col2:
-        words_fig = dashboard.create_top_words_chart(df, 'neutral')
-        if words_fig:
-            st.plotly_chart(words_fig, use_container_width=True)
-        else:
-            st.info("No neutral feedback available")
+        dashboard.create_top_words_chart(df, 'neutral')
     
     with col3:
-        words_fig = dashboard.create_top_words_chart(df, 'negative')
-        if words_fig:
-            st.plotly_chart(words_fig, use_container_width=True)
-        else:
-            st.info("No negative feedback available")
+        dashboard.create_top_words_chart(df, 'negative')
     
     # Action Plan
-    st.subheader("📋 Automated Action Plan (TextBlob Enhanced)")
+    st.subheader("📋 Automated Action Plan")
+    actions = dashboard.generate_action_plan(df)
     
-    action_plan = dashboard.generate_action_plan(df)
-    
-    if not action_plan.empty:
+    if actions:
         st.markdown('<div class="critical-alert">', unsafe_allow_html=True)
-        st.warning(f"🚨 {len(action_plan)} critical issue(s) requiring attention")
+        st.warning(f"🚨 {len(actions)} critical issue(s) requiring attention")
         st.markdown('</div>', unsafe_allow_html=True)
         
-        for _, action in action_plan.iterrows():
-            with st.expander(f"🔴 {action['stakeholder_group']} - {action['priority']} Priority (Sentiment: {action['avg_sentiment']:.2f})"):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write(f"**Average Sentiment:** {action['avg_sentiment']:.2f}")
-                    st.write(f"**Negative Feedback Count:** {action['negative_feedback_count']}")
-                    st.write(f"**Common Issues:** {action['common_issues']}")
-                
-                with col2:
-                    st.write(f"**Timeline:** {action['timeline']}")
-                    st.write(f"**Priority:** {action['priority']}")
+        for action in actions:
+            with st.expander(f"🔴 {action['stakeholder_group']} - {action['priority']} Priority"):
+                st.write(f"**Sentiment Score:** {action['avg_sentiment']:.2f}")
+                st.write(f"**Negative Feedback:** {action['negative_feedback_count']}")
+                st.write(f"**Common Issues:** {action['common_issues']}")
                 
                 st.write("**Recommended Actions:**")
                 for i, step in enumerate(action['recommended_actions'], 1):
                     st.write(f"{i}. {step}")
                 
-                # Action buttons
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button(f"Assign Team", key=f"assign_{action['stakeholder_group']}"):
-                        st.success(f"Team assigned for {action['stakeholder_group']}")
-                with col2:
-                    if st.button(f"Schedule Meeting", key=f"meeting_{action['stakeholder_group']}"):
-                        st.success(f"Meeting scheduled for {action['stakeholder_group']}")
-                with col3:
-                    if st.button(f"Mark Complete", key=f"complete_{action['stakeholder_group']}"):
-                        st.success(f"Action completed for {action['stakeholder_group']}")
+                st.write(f"**Timeline:** {action['timeline']}")
     else:
-        st.success("✅ No critical issues detected. Current sentiment levels are within acceptable ranges.")
+        st.success("✅ No critical issues detected!")
     
-    # Raw Data Explorer
+    # Data Explorer
     st.subheader("📊 Data Explorer")
-    
-    with st.expander("View Raw Data with TextBlob Analysis"):
+    with st.expander("View Raw Data"):
         st.dataframe(df)
         
-        # Download processed data
         csv = df.to_csv(index=False)
         st.download_button(
-            label="Download Processed Data",
+            label="Download Data",
             data=csv,
-            file_name="sentiment_analysis_results.csv",
+            file_name="sentiment_analysis.csv",
             mime="text/csv"
         )
 
